@@ -24,7 +24,7 @@ def timemachine_data_loader(
     vocab: Vocabulary
     corpus: list[int]
 
-    data_iter = DataLoader(TextDataset(corpus, seq_length), batch_size, shuffle)
+    data_iter = DataLoader(TextDataset(corpus, seq_length), batch_size, shuffle, drop_last=True)
     return data_iter, vocab
 
 
