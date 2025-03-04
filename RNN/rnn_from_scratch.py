@@ -125,7 +125,7 @@ def train_one_epoch(
     for features, labels in data_iter:
         # 处理标签维度并转移到设备
         features = features.to(device)  # features: (BATCH_SIZE, SEQ_LENGTH)
-        labels = labels.permute(1, 0).reshape(-1).to(device)  # labels: (BATCH_SIZE * SEQ_LENGTH)
+        labels = labels.T.flatten().to(device)  # labels: (SEQ_LENGTH * BATCH_SIZE)
 
         # 初始化或复用隐状态
         if shuffle or states is None:  # 初始化
@@ -138,7 +138,7 @@ def train_one_epoch(
 
         # 计算损失  损失函数参数分别是 (N, C) 和 (N,)
         # output: (SEQ_LENGTH * BATCH_SIZE, VOCAB_SIZE)
-        # labels: (BATCH_SIZE * SEQ_LENGTH)
+        # labels: (SEQ_LENGTH * BATCH_SIZE)
         loss = loss_fn(output, labels)
 
         # 反向传播、梯度裁剪、参数更新
