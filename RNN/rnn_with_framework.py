@@ -62,7 +62,7 @@ if __name__ == '__main__':
 
     BATCH_SIZE = 32
     SEQ_LENGTH = 35
-    HIDDEN_NUM = 256
+    HIDDEN_NUM = 512
     HIDDEN_LAYER_NUM = 1
     EPOCHS_NUM = 500
     LEARNING_RATE = 0.2
