@@ -82,6 +82,7 @@ def get_encoded_padded_tensor(lines: list[list[str]], vocab: Vocabulary, num_ste
 def nmt_eng_fra_dataloader(
         batch_size: int,
         seq_length: int,
+        num_workers: int = 4,
         max_simple_pair_num: Optional[int] = None
 ) -> tuple[DataLoader, Vocabulary, Vocabulary]:
     eng_list, fra_list = process_eng_fra_dataset(normal_unicode='NFC', lowercase=True,
@@ -98,7 +99,7 @@ def nmt_eng_fra_dataloader(
     fra_tensor, fra_valid_len = get_encoded_padded_tensor(fra_tokenized, fra_vocab, seq_length)
 
     dataset = TensorDataset(eng_tensor, eng_valid_len, fra_tensor, fra_valid_len)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 
     return dataloader, eng_vocab, fra_vocab
 
