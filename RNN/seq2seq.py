@@ -2,6 +2,7 @@ from typing import Tuple, Optional, Iterable
 
 import torch
 from torch import nn, Tensor
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from encoder_decoder import AbstractEncoder, AbstractDecoder
 
@@ -12,11 +13,12 @@ class Seq2SeqEncoder(AbstractEncoder[Tuple[Tensor, Tensor]]):
         self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
         self.rnn = nn.GRU(embed_dim, hidden_num, num_layers, dropout=dropout)
 
-    def forward(self, input_seq: Tensor, **kwargs) -> Tuple[Tensor, Tensor]:
+    def forward(self, input_seq: Tensor, valid_lengths: Optional[Tensor] = None, **kwargs) -> Tuple[Tensor, Tensor]:
         """
         将输入序列编码为中间表示
 
         :param input_seq: 输入序列张量，由词元索引组成，形状为：(BATCH_SIZE, SEQ_LENGTH)
+        :param valid_lengths: 各序列的有效长度，形状为：(BATCH_SIZE,)。None 表示所有序列的有效长度相同
         :return: 编码器输出和最终的隐状态元组，形状为：((SEQ_LENGTH, BATCH_SIZE, HIDDEN_NUM), (NUM_LAYERS, BATCH_SIZE, HIDDEN_NUM))
         """
 
@@ -25,7 +27,17 @@ class Seq2SeqEncoder(AbstractEncoder[Tuple[Tensor, Tensor]]):
 
         # (BATCH_SIZE, SEQ_LENGTH) -> (BATCH_SIZE, SEQ_LENGTH, EMBED_DIM) -> (SEQ_LENGTH, BATCH_SIZE, EMBED_DIM)
         embedded = self.embedding_layer(input_seq).permute(1, 0, 2).contiguous()  # 将词元索引张量词嵌入后，重排维度，并保证内存连续
-        output, state = self.rnn(embedded)  # 未显式地提供初始隐状态，PyTorch 将自动创建全零张量
+
+        if valid_lengths is None:
+            output, state = self.rnn(embedded)  # 未显式地提供初始隐状态，PyTorch 将自动创建全零张量
+        else:
+            packed = pack_padded_sequence(  # 序列打包，“压缩”为无填充的紧密格式
+                input=embedded,
+                lengths=valid_lengths.cpu(),  # 确保 valid_lengths 在 CPU 上
+                enforce_sorted=False
+            )
+            output, state = self.rnn(packed)  # 更高效的 RNN 处理
+            output, _ = pad_packed_sequence(output)  # 序列解包，转换为填充格式
 
         return output, state
 
