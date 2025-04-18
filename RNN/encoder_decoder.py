@@ -2,6 +2,7 @@ from abc import ABC as _ABC, abstractmethod as _abstractmethod
 from typing import Tuple as _Tuple, TypeVar as _TypeVar, Generic as _Generic
 
 from torch import Tensor as _Tensor
+from torch import device as _device
 from torch import nn as _nn
 
 __all__ = ['AbstractEncoder', 'AbstractDecoder', 'EncoderDecoder']
@@ -42,10 +43,13 @@ class AbstractDecoder(_ABC, _nn.Module, _Generic[_DecoderState]):
 class EncoderDecoder(_nn.Module, _Generic[_EncoderOutput, _DecoderState]):
     """以组合类的形式提供编码器-解码器架构的完整端到端序列转换实现"""
 
-    def __init__(self, encoder: AbstractEncoder[_EncoderOutput], decoder: AbstractDecoder[_DecoderState]):
+    def __init__(self,
+                 encoder: AbstractEncoder[_EncoderOutput],
+                 decoder: AbstractDecoder[_DecoderState],
+                 device: _device):
         super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
+        self.encoder = encoder.to(device)
+        self.decoder = decoder.to(device)
 
     def forward(self, enc_input_seq: _Tensor, dec_input_seq: _Tensor, **kwargs) -> _Tuple[_Tensor, ...]:
         """执行完整的编码-解码过程，输出序列"""
