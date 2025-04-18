@@ -1,10 +1,13 @@
+from time import time
 from typing import Tuple, Optional, Iterable
 
 import torch
-from torch import nn, Tensor
+from torch import nn, Tensor, optim
+from torch.nn.utils import clip_grad_norm_
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from encoder_decoder import AbstractEncoder, AbstractDecoder
+from encoder_decoder import AbstractEncoder, AbstractDecoder, EncoderDecoder
+from text_preprocessing import Vocabulary, ST
 
 
 class Seq2SeqEncoder(AbstractEncoder[Tuple[Tensor, Tensor]]):
@@ -151,3 +154,59 @@ class MultiIgnoreIndicesCrossEntropyLoss(nn.CrossEntropyLoss):
             return masked_losses.sum() / mask.sum().float().clamp(min=1.0)  # 防止极端情况下的除零错误
         else:
             return masked_losses  # 'none'
+
+
+def train_one_epoch(
+        module: EncoderDecoder,
+        data_iter: Iterable[Tuple[Tensor, ...]],
+        optimizer: optim.Optimizer,
+        criterion: nn.Module,
+        tgt_vocab: Vocabulary,
+        device: torch.device
+) -> Tuple[float, float]:
+    """
+    一个迭代周期内 Seq2Seq 模型的训练
+
+    :param module: 序列到序列模型
+    :param data_iter: 数据集加载器
+    :param optimizer: 优化器
+    :param criterion: 损失函数
+    :param tgt_vocab: 目标语言词表
+    :param device: 计算设备
+    :return: 平均损失, 训练速度 (tokens/sec)
+    """
+    sos_idx = tgt_vocab.get_index(str(ST.SOS))  # 目标语言词表中，序列开始标记词元的索引值
+    total_loss = 0.0
+    total_tokens = 0
+
+    module.train()  # 每个迭代周期开始前，将模型设置为训练模式
+    start_time = time()
+    for src, src_valid_len, tgt, tgt_valid_len in data_iter:
+        optimizer.zero_grad()  # 每个批次处理前，清除上一次迭代累积的梯度
+
+        src = src.to(device)
+        tgt = tgt.to(device)  # 形状为：(BATCH_SIZE, SEQ_LENGTH)
+        # src_valid_len 将用于 pack_padded_sequence，不必在 device 上生成副本
+        tgt_valid_len = tgt_valid_len.to(device)
+
+        dec_input = torch.cat([  # 以强制教学的方式输入解码器
+            torch.full((tgt.shape[0], 1), sos_idx, device=device),  # 形状为 (BATCH_SIZE, 1)、由 sos_idx 填充的张量
+            tgt[..., :-1]  # (BATCH_SIZE, SEQ_LENGTH) -> (BATCH_SIZE, SEQ_LENGTH - 1)
+        ], dim=1)
+
+        tgt_pred = module(src, dec_input, valid_lengths=src_valid_len)  # 前向传播
+        loss = criterion(inputs=tgt_pred[0], targets=tgt, valid_lengths=tgt_valid_len)  # 计算损失
+
+        loss.sum().backward()  # 反向传播
+        clip_grad_norm_(module.parameters(), max_norm=2)  # 梯度裁剪
+        optimizer.step()  # 更新参数
+
+        num_tokens = tgt_valid_len.sum().item()
+        total_loss += loss.sum().item()
+        total_tokens += num_tokens
+
+    # 计算平均损失和训练速度
+    avg_loss = total_loss / total_tokens
+    tokens_per_sec = total_tokens / (time() - start_time)
+
+    return avg_loss, tokens_per_sec
