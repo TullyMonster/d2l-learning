@@ -175,7 +175,7 @@ def train_one_epoch(
     :param device: 计算设备
     :return: 平均损失, 训练速度 (tokens/sec)
     """
-    sos_idx = tgt_vocab.get_index(str(ST.SOS))  # 目标语言词表中，序列开始标记词元的索引值
+    sos_idx = tgt_vocab.get_index(ST.SOS)  # 目标语言词表中，序列开始标记词元的索引值
     total_loss = 0.0
     total_tokens = 0
 
