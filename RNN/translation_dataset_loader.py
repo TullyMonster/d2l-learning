@@ -64,11 +64,11 @@ def process_eng_fra_dataset(normal_unicode: UnicodeNormalForm = None, lowercase=
 
 
 def get_encoded_padded_tensor(lines: list[list[str]], vocab: Vocabulary, num_step: int) -> tuple[Tensor, Tensor]:
-    encoded_pad, = vocab.encode([str(ST.PAD)])
+    encoded_pad = vocab.get_index(ST.PAD)
     lines_encoded: list[list[int]]
     lines_padded: list[list[int]]
 
-    lines_encoded = [vocab.encode(tokens) + vocab.encode([str(ST.EOS)])
+    lines_encoded = [vocab.encode(tokens) + [vocab.get_index(ST.EOS)]
                      for tokens in lines]
     lines_padded = [encoded_line[:num_step] + [encoded_pad] * (num_step - len(encoded_line))
                     for encoded_line in lines_encoded]

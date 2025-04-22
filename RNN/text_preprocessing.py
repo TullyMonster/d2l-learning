@@ -3,22 +3,27 @@ from enum import Enum
 from typing import Literal, Iterable, Callable, Optional
 
 
-class ST(Enum):
+class ST(str, Enum):
     """特殊词元 (Special Token)"""
 
-    UNK = '未被纳入词表的未知词元 (unknown token)'
-    PAD = '用于填充序列长度的标记 (padding token)'
-    SOS = '序列的开始标记 (start of sequence)'
-    EOS = '序列的结束标记 (end of sequence)'
-    SEP = '段落的分隔标记 (separator token)'
-    MASK = '掩盖以用于预测的标记 (mask token)'
-
-    def __str__(self):
-        return f'<{self.name}>'
+    UNK = '<UNK>'
+    PAD = '<PAD>'
+    SOS = '<SOS>'
+    EOS = '<EOS>'
+    SEP = '<SEP>'
+    MASK = '<MASK>'
 
     @property
     def description(self):
-        return self.value
+        describe = {
+            ST.UNK: '未被纳入词表的未知词元 (unknown token)',
+            ST.PAD: '用于填充序列长度的标记 (padding token)',
+            ST.SOS: '序列的开始标记 (start of sequence)',
+            ST.EOS: '序列的结束标记 (end of sequence)',
+            ST.SEP: '段落的分隔标记 (separator token)',
+            ST.MASK: '掩盖以用于预测的标记 (mask token)',
+        }
+        return describe[self.value]
 
 
 class Vocabulary:
@@ -29,7 +34,7 @@ class Vocabulary:
         :param special_tokens: 由特殊词元组成的可迭代对象
         """
         self.__unk_token = '<UNK>'
-        tokens: list[str] = list(dict.fromkeys([self.__unk_token] + [str(i) for i in special_tokens]))
+        tokens: list[str] = list(dict.fromkeys([self.__unk_token] + [i for i in special_tokens]))
         self.__valid_token_freqs = {token: freq for token, freq in Counter(flat_tokens).items() if freq >= min_freq}
         tokens.extend([
             token for token, index in
