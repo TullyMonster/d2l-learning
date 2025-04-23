@@ -1,6 +1,9 @@
+from collections import Counter
+from dataclasses import dataclass
 from time import time
 from typing import Tuple, Optional, Iterable
 
+import math
 import torch
 from torch import nn, Tensor, optim
 from torch.nn.utils import clip_grad_norm_
@@ -210,3 +213,180 @@ def train_one_epoch(
     tokens_per_sec = total_tokens / (time() - start_time)
 
     return avg_loss, tokens_per_sec
+
+
+def forecast_autoregressive(
+        module: EncoderDecoder,
+        src_sentence: str,
+        src_vocab: Vocabulary,
+        tgt_vocab: Vocabulary,
+        device: torch.device,
+        max_length: int = 20,
+        record_attn_weights: bool = False
+) -> tuple[str, Tensor]:
+    """
+    以自回归方式实现序列预测（生成）
+
+    :param module: 序列到序列模型
+    :param src_sentence: 源语言句子
+    :param src_vocab: 源语言词表
+    :param tgt_vocab: 目标语言词表
+    :param max_length: 生成序列的最大长度
+    :param device: 计算设备
+    :param record_attn_weights: 是否保存注意力权重
+
+    :return: 生成的目标语言句子，必要时返回注意力权重
+    """
+    # 获取特殊词元索引
+    pad_src_index: int = src_vocab.get_index(ST.PAD)
+    sos_tgt_index: int = tgt_vocab.get_index(ST.SOS)
+    eos_tgt_index: int = tgt_vocab.get_index(ST.EOS)
+
+    # 输入预处理
+    src_tokens: list[int] = src_vocab.encode([*src_sentence.lower().split(), ST.EOS])  # 大小写转换、分词、添加 EOS 词元
+    src_tokens_pad_trunc: list[int] = [  # 截断或填充到指定长度
+        *src_tokens[:max_length],
+        *[pad_src_index] * (max_length - len(src_tokens))
+    ]
+
+    # 组织逐时间步的输出
+    output_tokens: list[int] = []
+    attn_weights: list[Tensor] = []
+
+    module.eval()
+    with torch.no_grad():
+        src_input = torch.tensor([src_tokens_pad_trunc], dtype=torch.long, device=device)  # (BATCH_SIZE=1, SEQ_LENGTH)
+        dec_input = torch.tensor(data=[[sos_tgt_index]], dtype=torch.long, device=device)  # (BATCH_SIZE=1, 1)
+        src_valid_length = torch.tensor([len(src_tokens)], device=device)  # (BATCH_SIZE=1,)
+
+        for _ in range(max_length):  # 执行预测
+            output: tuple[Tensor, ...] = module(src_input, dec_input, valid_lengths=src_valid_length)
+            next_token = output[0][-1].argmax(dim=-1).item()  # 最后一个时间步的预测结果
+
+            if next_token == eos_tgt_index: break
+            if record_attn_weights: attn_weights.append(output[1].squeeze(0))
+
+            output_tokens.append(next_token)
+            dec_input = torch.cat(tensors=[dec_input, torch.tensor([[next_token]], device=device)],
+                                  dim=1)  # (BATCH_SIZE, 1) -> (BATCH_SIZE, 2) -> ...
+
+    tgt_sentence = ' '.join(tgt_vocab.decode(output_tokens))
+    stack_attn_weights = torch.stack(attn_weights) if record_attn_weights else torch.tensor([])
+    return tgt_sentence, stack_attn_weights
+
+
+def evaluate_bleu(
+        candi_str: str,
+        refer_strs: list[str],
+        max_n_gram: int = 4,
+        weights: Optional[list[float]] = None
+) -> float:
+    """
+    计算候选句子与参考句子之间的 BLEU 分数（基于空格分词）
+
+    :param candi_str: 候选翻译/生成的文本
+    :param refer_strs: 一个或多个参考翻译/标准文本
+    :param max_n_gram: 最大 n-gram
+    :param weights: n-gram 权重列表，默认为均匀权重 [0.25, 0.25, 0.25, 0.25]
+
+    :return: BLEU 得分，范围从 0~1
+    """
+    weights = [1.0 / max_n_gram] * max_n_gram if weights is None else weights  # 设置默认权重
+
+    if len(weights) != max_n_gram:  # 确保权重列表与最大 n-gram 匹配
+        raise ValueError(f'n-gram 权重列表 weights 的长度必须等于 {max_n_gram=}，当前为{len(weights)}')
+
+    candi_tokens: list[str] = candi_str.strip().split()  # 候选文本分词
+    candi_len = len(candi_tokens)  # 候选文本长度
+    refer_tokens_list: list[list[str]] = [ref.strip().split() for ref in refer_strs]  # 参考文本列表分词
+    refer_len = min([len(ref_tokens) for ref_tokens in refer_tokens_list], key=lambda x: abs(x - candi_len))  # 参考文本长度
+
+    # 计算短文本惩罚因子 (Brevity Penalty)
+    if candi_len == 0:
+        return 0.0  # 避免除以零错误
+    bp = 1.0 if candi_len > refer_len else math.exp(1 - refer_len / candi_len)
+
+    precisions = []  # 各阶 n-gram 精度列表
+    for n in range(1, max_n_gram + 1):
+        candi_ngrams = [' '.join(candi_tokens[i:i + n]) for i in range(len(candi_tokens) - n + 1)]  # 从候选文本中提取 n-gram
+        if len(candi_ngrams) == 0:  # 如果没有 n-gram，则精度为小值 1e-10，避免 log(0) 问题
+            precisions.append(1e-10)
+            continue
+
+        candi_counter = Counter(candi_ngrams)  # 统计候选文本中每个 n-gram 的出现次数
+        max_matches = Counter()  # 计算匹配的 n-gram 数量 (对每个参考文本统计，然后取最大值)
+        for ref_tokens in refer_tokens_list:
+            ref_ngrams = [' '.join(ref_tokens[i:i + n]) for i in range(len(ref_tokens) - n + 1)]  # 从参考文本中提取 n-gram
+            ref_counter = Counter(ref_ngrams)
+
+            # 对每个 n-gram，取候选文本和参考文本中出现次数的最小值
+            # 然后与当前最大匹配次数比较
+            for ngram, count in candi_counter.items():
+                max_matches[ngram] = max(max_matches[ngram], min(count, ref_counter[ngram]))
+
+        matches = sum(max_matches.values())  # 计算匹配的 n-gram 总数
+        precision = matches / sum(candi_counter.values()) if sum(candi_counter.values()) > 0 else 1e-10  # 计算精度
+        precision = max(precision, 1e-10)
+
+        precisions.append(precision)
+
+    log_avg = sum(w * math.log(p) for w, p in zip(weights, precisions))  # 加权几何平均
+    bleu = bp * math.exp(log_avg)
+
+    return bleu
+
+
+@dataclass
+class TestSentence:
+    """用于测试的源语言与目标语言句子对"""
+    src: list[str]
+    tgt: list[list[str]]
+
+
+if __name__ == '__main__':
+    from translation_dataset_loader import nmt_eng_fra_dataloader
+
+    BATCH_SIZE = 128
+    SEQ_LENGTH = 20
+    EMBED_DIM = 256
+    HIDDEN_NUM = 256
+    NUM_LAYERS = 2
+    DROPOUT = 0.2
+    LEARNING_RATE = 0.0005
+    EPOCHS_NUM = 50
+    TEST_INTERVAL = 1
+    TEST_SENTENCES = TestSentence(src=["I like apples .",
+                                       "She reads books regularly .",
+                                       "They play soccer together .",
+                                       "We studied French yesterday .",
+                                       "The weather is beautiful today ."],
+                                  tgt=[["J'aime les pommes .", "J'adore les pommes .", "Les pommes me plaisent .",
+                                        "Je raffole des pommes .", "J'apprécie les pommes ."],
+                                       ["Elle lit des livres régulièrement .", "Elle lit des livres souvent .",
+                                        "Elle lit des livres fréquemment .", "Elle lit régulièrement des ouvrages ."],
+                                       ["Ils jouent au football ensemble .", "Ils jouent au foot ensemble .",
+                                        "Ils pratiquent le football ensemble .", "Ensemble, ils jouent au football ."],
+                                       ["Nous avons étudié le français hier .", "Hier, nous avons étudié le français .",
+                                        "Nous avons appris le français hier .", "Nous avons fait du français hier ."],
+                                       ["Le temps est magnifique aujourd'hui .", "Il fait beau aujourd'hui .",
+                                        "Le temps est splendide aujourd'hui .", "La météo est belle aujourd'hui ."]])
+
+    data_iter, eng_vocab, fra_vocab = nmt_eng_fra_dataloader(BATCH_SIZE, SEQ_LENGTH, num_workers=8)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    nmt_model = EncoderDecoder(encoder=Seq2SeqEncoder(len(eng_vocab), EMBED_DIM, HIDDEN_NUM, NUM_LAYERS, DROPOUT),
+                               decoder=Seq2SeqDecoder(len(fra_vocab), EMBED_DIM, HIDDEN_NUM, NUM_LAYERS, DROPOUT),
+                               device=device)  # 使用默认的模型参数初始化方法，不手动初始化
+    optimizer = optim.Adam(nmt_model.parameters(), lr=LEARNING_RATE)
+    criterion = SequenceLengthCrossEntropyLoss()
+
+    for epoch in range(EPOCHS_NUM):
+        loss, speed = train_one_epoch(nmt_model, data_iter, optimizer, criterion, fra_vocab, device)
+        print(f'第 {epoch + 1:03} 轮：损失为 {loss:.3f}，速度为 {speed:.1f} tokens/sec')
+
+        if (epoch + 1) % TEST_INTERVAL == 0:
+            for eng, fra in zip(TEST_SENTENCES.src, TEST_SENTENCES.tgt):
+                forecast_fra, _ = forecast_autoregressive(nmt_model, eng, eng_vocab, fra_vocab, device)
+                print(f'INFO: '
+                      f'{eng.ljust(max(map(len, TEST_SENTENCES.src)))} '
+                      f'→ (BLEU={evaluate_bleu(forecast_fra, fra, max_n_gram=3):.2f}) {forecast_fra}')
