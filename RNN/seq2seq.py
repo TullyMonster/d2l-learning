@@ -159,6 +159,13 @@ class MultiIgnoreIndicesCrossEntropyLoss(nn.CrossEntropyLoss):
             return masked_losses  # 'none'
 
 
+@dataclass
+class TestSentence:
+    """用于测试的源语言与目标语言句子对"""
+    src: list[str]
+    tgt: list[list[str]]
+
+
 def train_one_epoch(
         module: EncoderDecoder,
         data_iter: Iterable[Tuple[Tensor, ...]],
@@ -215,7 +222,7 @@ def train_one_epoch(
     return avg_loss, tokens_per_sec
 
 
-def forecast_autoregressive(
+def forecast_greedy_search(
         module: EncoderDecoder,
         src_sentence: str,
         src_vocab: Vocabulary,
@@ -223,16 +230,16 @@ def forecast_autoregressive(
         device: torch.device,
         max_length: int = 20,
         record_attn_weights: bool = False
-) -> tuple[str, Tensor]:
+) -> tuple[str, Tensor | None]:
     """
-    以自回归方式实现序列预测（生成）
+    以贪心搜索的方式实现序列预测（生成）
 
     :param module: 序列到序列模型
     :param src_sentence: 源语言句子
     :param src_vocab: 源语言词表
     :param tgt_vocab: 目标语言词表
-    :param max_length: 生成序列的最大长度
     :param device: 计算设备
+    :param max_length: 生成序列的最大长度
     :param record_attn_weights: 是否保存注意力权重
 
     :return: 生成的目标语言句子，必要时返回注意力权重
@@ -271,7 +278,7 @@ def forecast_autoregressive(
                                   dim=1)  # (BATCH_SIZE, 1) -> (BATCH_SIZE, 2) -> ...
 
     tgt_sentence = ' '.join(tgt_vocab.decode(output_tokens))
-    stack_attn_weights = torch.stack(attn_weights) if record_attn_weights else torch.tensor([])
+    stack_attn_weights = torch.stack(attn_weights) if record_attn_weights else None
     return tgt_sentence, stack_attn_weights
 
 
@@ -336,13 +343,6 @@ def evaluate_bleu(
     return bleu
 
 
-@dataclass
-class TestSentence:
-    """用于测试的源语言与目标语言句子对"""
-    src: list[str]
-    tgt: list[list[str]]
-
-
 if __name__ == '__main__':
     from translation_dataset_loader import nmt_eng_fra_dataloader
 
@@ -386,7 +386,7 @@ if __name__ == '__main__':
 
         if (epoch + 1) % TEST_INTERVAL == 0:
             for eng, fra in zip(TEST_SENTENCES.src, TEST_SENTENCES.tgt):
-                forecast_fra, _ = forecast_autoregressive(nmt_model, eng, eng_vocab, fra_vocab, device)
+                forecast_fra, _ = forecast_greedy_search(nmt_model, eng, eng_vocab, fra_vocab, device)
                 print(f'INFO: '
                       f'{eng.ljust(max(map(len, TEST_SENTENCES.src)))} '
                       f'→ (BLEU={evaluate_bleu(forecast_fra, fra, max_n_gram=3):.2f}) {forecast_fra}')
