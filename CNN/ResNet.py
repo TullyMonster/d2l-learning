@@ -197,7 +197,7 @@ class ResNeXt(nn.Module):
         return self.model(x)
 
 
-if __name__ == '__ma in__':
+if __name__ == '__main__':
     BATCH_SIZE = 256
     EPOCHS_NUM = 30
     LEARNING_RATE = 0.01
