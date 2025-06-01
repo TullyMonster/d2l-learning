@@ -35,14 +35,14 @@ class Seq2SeqEncoder(AbstractEncoder[Tuple[Tensor, Tensor]]):
         embedded = self.embedding_layer(input_seq).permute(1, 0, 2).contiguous()  # 将词元索引张量词嵌入后，重排维度，并保证内存连续
 
         if valid_lengths is None:
-            output, state = self.rnn(embedded)  # 未显式地提供初始隐状态，PyTorch 将自动创建全零张量
+            output, state = self.rnn(embedded)
         else:
             packed = pack_padded_sequence(  # 序列打包，“压缩”为无填充的紧密格式
                 input=embedded,
                 lengths=valid_lengths.cpu(),  # 确保 valid_lengths 在 CPU 上
                 enforce_sorted=False
             )
-            output, state = self.rnn(packed)  # 更高效的 RNN 处理
+            output, state = self.rnn(packed)
             output, _ = pad_packed_sequence(output)  # 序列解包，转换为填充格式
 
         return output, state
@@ -271,14 +271,14 @@ def forecast_greedy_search(
             next_token = output[0][-1].argmax(dim=-1).item()  # 最后一个时间步的预测结果（贪心搜索：每一步都选择概率最高的词元）
 
             if next_token == eos_tgt_index: break
-            if record_attn_weights: attn_weights.append(output[1].squeeze(0))
+            if record_attn_weights and len(output) > 1: attn_weights.append(output[1].squeeze(0))
 
             output_tokens.append(next_token)
             dec_input = torch.cat(tensors=[dec_input, torch.tensor([[next_token]], device=device)],
                                   dim=1)  # (BATCH_SIZE, 1) -> (BATCH_SIZE, 2) -> ...
 
     tgt_sentence = ' '.join(tgt_vocab.decode(output_tokens))
-    stack_attn_weights = torch.stack(attn_weights) if record_attn_weights else None
+    stack_attn_weights = torch.stack(attn_weights) if attn_weights else None
     return tgt_sentence, stack_attn_weights
 
 
