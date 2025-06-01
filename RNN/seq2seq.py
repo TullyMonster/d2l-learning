@@ -67,7 +67,9 @@ class Seq2SeqDecoder(AbstractDecoder[Tensor]):
 
     def forward(self, input_seq: Tensor, state: Tensor) -> Tuple[Tuple[Tensor, ...], Tensor]:
         """
-        执行序列解码
+        批量的序列解码
+
+        输入完整的目标序列和解码器隐状态后，输出对目标序列中下一个词元概率分布的预测
 
         :param input_seq: 输入序列张量，由词元索引组成，形状为：(BATCH_SIZE, SEQ_LENGTH)
         :param state: 解码器的隐状态，形状为：(NUM_LAYERS, BATCH_SIZE, HIDDEN_NUM)
