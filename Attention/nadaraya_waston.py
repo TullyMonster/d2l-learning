@@ -92,7 +92,7 @@ class ParameterizedNadarayaWatsonKernelRegression(nn.Module):
         """
         :param keys: 键，形状为 (BATCH_SIZE, KEYS_NUM, KEYS_DIM)
         :param values: 值，形状为 (BATCH_SIZE, KEYS_NUM, VALUES_DIM)
-        :param queries: 查询，形状为 (BATCH_SIZE, QUERIES_NUM, KEYS_DIM)
+        :param queries: 查询，形状为 (BATCH_SIZE, QUERIES_NUM, QUERIES_DIM)，其中 QUERIES_DIM = KEYS_DIM
         :return: 预测值，形状为 (BATCH_SIZE, QUERIES_NUM, VALUES_DIM)
         """
         q_expanded = queries.unsqueeze(2)  # (BATCH_SIZE, QUERIES_NUM, 1, KEYS_DIM)
