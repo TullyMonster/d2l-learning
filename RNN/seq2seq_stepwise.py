@@ -11,9 +11,8 @@ class Seq2SeqDecoderStepwise(AbstractDecoder[Tuple[Tensor, Tensor]]):
     def __init__(self, vocab_size: int, embed_dim: int, hidden_num: int, num_layers: int, dropout: float = 0):
         super().__init__()
         self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
-        self.rnn = nn.GRU(embed_dim + hidden_num, hidden_num, num_layers, dropout=dropout)  # 输入维度需要增加hidden_num
+        self.rnn = nn.GRU(embed_dim + hidden_num, hidden_num, num_layers, dropout=dropout)  # 输入维度需要增加 HIDDEN_NUM
         self.output_layer = nn.Linear(hidden_num, vocab_size)
-        self.hidden_num = hidden_num
 
     def init_state(self, enc_output: Tuple[Tensor, Tensor], **kwargs) -> Tuple[Tensor, Tensor]:
         """

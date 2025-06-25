@@ -5,7 +5,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import TensorDataset, DataLoader
 
-from text_preprocessing import tokenize, Vocabulary, ST
+from RNN.text_preprocessing import tokenize, Vocabulary, ST
 
 UnicodeNormalForm = Optional[Literal['NFC', 'NFKC', 'NFD', 'NFKD']]
 

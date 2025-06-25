@@ -17,6 +17,7 @@ def masked_softmax(atten_logits: Tensor, valid_len: Tensor) -> Tensor:
     batch_size, queries_num, keys_num = atten_logits.shape
     # 转换形状为 (BATCH_SIZE * QUERIES_NUM,)
     valid_len = torch.repeat_interleave(valid_len, queries_num) if valid_len.dim() == 1 else valid_len.flatten()
+    valid_len = valid_len.to(atten_logits.device)
     # 转换形状为 (BATCH_SIZE * QUERIES_NUM, KEYS_NUM)
     atten_logits = atten_logits.reshape(-1, keys_num)
 

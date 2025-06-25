@@ -9,8 +9,8 @@ from torch import nn, Tensor, optim
 from torch.nn.utils import clip_grad_norm_
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from encoder_decoder import AbstractEncoder, AbstractDecoder, EncoderDecoder
-from text_preprocessing import Vocabulary, ST
+from RNN.encoder_decoder import AbstractEncoder, AbstractDecoder, EncoderDecoder
+from RNN.text_preprocessing import Vocabulary, ST
 
 
 class Seq2SeqEncoder(AbstractEncoder[Tuple[Tensor, Tensor]]):
@@ -52,9 +52,8 @@ class Seq2SeqDecoder(AbstractDecoder[Tensor]):
     def __init__(self, vocab_size: int, embed_dim: int, hidden_num: int, num_layers: int, dropout: float = 0):
         super().__init__()
         self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
-        self.rnn = nn.GRU(embed_dim + hidden_num, hidden_num, num_layers, dropout=dropout)  # 输入维度需要增加hidden_num
+        self.rnn = nn.GRU(embed_dim + hidden_num, hidden_num, num_layers, dropout=dropout)  # 输入维度需要增加 HIDDEN_NUM
         self.output_layer = nn.Linear(hidden_num, vocab_size)
-        self.hidden_num = hidden_num
 
     def init_state(self, enc_output: Tuple[Tensor, Tensor], **kwargs) -> Tensor:
         """
@@ -63,7 +62,7 @@ class Seq2SeqDecoder(AbstractDecoder[Tensor]):
         :param enc_output: 编码器输出
         :return: 解码器的初始隐状态，形状为：(NUM_LAYERS, BATCH_SIZE, HIDDEN_NUM)
         """
-        return enc_output[1]  # 编码器的完整隐状态
+        return enc_output[1]  # 最后一个时间步的隐状态
 
     def forward(self, input_seq: Tensor, state: Tensor) -> Tuple[Tuple[Tensor, ...], Tensor]:
         """
