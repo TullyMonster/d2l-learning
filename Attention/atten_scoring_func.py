@@ -47,6 +47,7 @@ class AdditiveAttention(nn.Module):
 
         :return: 加性注意力输出，形状为 (BATCH_SIZE, QUERIES_NUM, VALUES_DIM)
         """
+        self.atten_weights = None
         batch_size, keys_num, _ = keys.shape
         _, queries_num, _ = queries.shape
 
@@ -60,9 +61,10 @@ class AdditiveAttention(nn.Module):
         logits = (self.score_layer(hidden)  # (BATCH_SIZE, QUERIES_NUM, KEYS_NUM, 1)
                   .squeeze(-1))  # (BATCH_SIZE, QUERIES_NUM, KEYS_NUM)
 
-        self.atten_weights = masked_softmax(logits, valid_len)  # (BATCH_SIZE, QUERIES_NUM, KEYS_NUM)
+        attention_weights = masked_softmax(logits, valid_len)  # (BATCH_SIZE, QUERIES_NUM, KEYS_NUM)
+        if not self.training: self.atten_weights = attention_weights
 
-        return torch.bmm(self.dropout(self.atten_weights), values)  # (BATCH_SIZE, QUERIES_NUM, VALUES_DIM)
+        return torch.bmm(self.dropout(attention_weights), values)  # (BATCH_SIZE, QUERIES_NUM, VALUES_DIM)
 
 
 class ScaledDotProductAttention(nn.Module):
@@ -81,6 +83,7 @@ class ScaledDotProductAttention(nn.Module):
 
         :return: 缩放点积注意力输出，形状为 (BATCH_SIZE, QUERIES_NUM, VALUES_DIM)
         """
+        self.atten_weights = None
         _, _, q_k_dim = keys.shape
 
         logits = torch.bmm(  # (BATCH_SIZE, QUERIES_NUM, KEYS_NUM)
@@ -88,9 +91,10 @@ class ScaledDotProductAttention(nn.Module):
             keys.transpose(1, 2)  # (BATCH_SIZE, KEYS_NUM, q_k_dim) -> (BATCH_SIZE, q_k_dim, KEYS_NUM)
         ) / (q_k_dim ** 0.5)
 
-        self.atten_weights = masked_softmax(logits, valid_len)
+        attention_weights = masked_softmax(logits, valid_len)
+        if not self.training: self.atten_weights = attention_weights
 
-        return torch.bmm(self.dropout(self.atten_weights), values)
+        return torch.bmm(self.dropout(attention_weights), values)
 
 
 if __name__ == '__main__':
