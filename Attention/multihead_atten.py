@@ -96,17 +96,17 @@ class MultiHeadAttention(nn.Module):
 if __name__ == '__main__':
     from Attention.utils import plot_attention_heatmap
 
-    embed_dim = 512
-    num_heads = 8
-    batch_size = 2
-    seq_len = 10
+    EMBED_DIM = 512
+    NUM_HEADS = 8
+    BATCH_SIZE = 2
+    SEQ_LEN = 10
 
-    q = torch.randn(batch_size, seq_len, embed_dim)
-    k = torch.randn(batch_size, seq_len, embed_dim)
-    v = torch.randn(batch_size, seq_len, embed_dim)
+    q = torch.randn(BATCH_SIZE, SEQ_LEN, EMBED_DIM)
+    k = torch.randn(BATCH_SIZE, SEQ_LEN, EMBED_DIM)
+    v = torch.randn(BATCH_SIZE, SEQ_LEN, EMBED_DIM)
     valid_lens = torch.tensor([4, 7])
 
-    m_h_atten = MultiHeadAttention(embed_dim, num_heads, dropout=0.1)
+    m_h_atten = MultiHeadAttention(EMBED_DIM, NUM_HEADS, dropout=0.1)
     m_h_atten.eval()
 
     o = m_h_atten(q, k, v, valid_lens)
@@ -116,4 +116,4 @@ if __name__ == '__main__':
     print(f'注意力权重形状: {list(m_h_atten.atten_weights.shape)}')
 
     plot_attention_heatmap(m_h_atten.atten_weights, x_label='Keys', y_label='Queries',
-                           titles=[f'Batch {i + 1}, Head {j + 1}' for i in range(batch_size) for j in range(num_heads)])
+                           titles=[f'Batch {i + 1}, Head {j + 1}' for i in range(BATCH_SIZE) for j in range(NUM_HEADS)])
